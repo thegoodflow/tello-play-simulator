@@ -141,6 +141,7 @@ export class DronePhysics {
 
   startTakeoff() {
     if (this.state !== DroneState.DISARMED) return 'error';
+    if (this.battery < 10) return 'error';
     this.state = DroneState.TAKING_OFF;
     this.droneModel.setPropellerSpeed(1.2);
     this.droneModel.setLedColor(0x10b981, true); // Blinking green
@@ -261,12 +262,8 @@ export class DronePhysics {
   }
 
   async startFlip(dir) {
-    // If drone is on the ground, auto-takeoff to safe altitude first
-    if (this.state === DroneState.DISARMED) {
-      await this.startTakeoff();
-      await new Promise(r => setTimeout(r, 400));
-    }
-
+    if (this.state === DroneState.DISARMED || this.state === DroneState.LANDING) return 'error';
+    if (this.battery < 50) return 'error';
     if (this.isFlipping) return 'error';
 
     this.isFlipping = true;
@@ -305,6 +302,9 @@ export class DronePhysics {
       this.flightTime += delta;
       // Drains 100% in ~13 minutes = ~780s
       this.battery = Math.max(0, this.battery - (delta / 7.8));
+      if (this.battery <= 5 && (this.state === DroneState.FLYING || this.state === DroneState.HOVER)) {
+        this.startLanding();
+      }
     }
 
     // 2. Process Emergency State

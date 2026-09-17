@@ -57,25 +57,91 @@ function broadcastToFrontend(data) {
   }
 }
 
+// Track pending commands awaiting physics/maneuver completion
+let commandIdCounter = 0;
+const pendingCommands = new Map();
+
+const MOVEMENT_COMMANDS = new Set([
+  'takeoff', 'land', 'up', 'down', 'left', 'right',
+  'forward', 'back', 'cw', 'ccw', 'flip', 'stop'
+]);
+
+function getEstimatedDurationMs(cmd, args) {
+  switch (cmd) {
+    case 'takeoff': return 2500;
+    case 'land': return 2000;
+    case 'up':
+    case 'down':
+    case 'left':
+    case 'right':
+    case 'forward':
+    case 'back': {
+      const dist = parseFloat(args[0]) || 50;
+      return Math.max(600, Math.round((dist / 40) * 1000));
+    }
+    case 'cw':
+    case 'ccw': {
+      const angle = parseFloat(args[0]) || 90;
+      return Math.max(500, Math.round((angle / 60) * 1000));
+    }
+    case 'flip': return 1500;
+    case 'stop': return 100;
+    default: return 0;
+  }
+}
+
 // UDP Bridge handling Tello ports
 const udpBridge = new UdpBridge({
   cmdPort: CMD_PORT,
   statePort: STATE_PORT,
   videoPort: VIDEO_PORT,
   onCommand: ({ raw, cmd, args, client }) => {
-    // Forward command to frontend 3D simulator
+    if (cmd === 'streamon') {
+      videoStreamer.start(client.address);
+      return 'ok';
+    } else if (cmd === 'streamoff') {
+      videoStreamer.stop();
+      return 'ok';
+    }
+
+    if (!MOVEMENT_COMMANDS.has(cmd)) {
+      // Non-movement commands (read queries, command, speed, rc): forward to UI and reply immediately
+      broadcastToFrontend({
+        type: 'UDP_COMMAND',
+        command: raw,
+        cmd,
+        args,
+        client
+      });
+      return;
+    }
+
+    // Movement command: assign unique ID and wait for physics completion
+    const id = ++commandIdCounter;
     broadcastToFrontend({
       type: 'UDP_COMMAND',
+      id,
       command: raw,
       cmd,
       args,
       client
     });
 
-    if (cmd === 'streamon') {
-      videoStreamer.start(client.address);
-    } else if (cmd === 'streamoff') {
-      videoStreamer.stop();
+    if (wsClients.size > 0) {
+      // A browser 3D simulator is connected: wait for physics completion via WebSocket
+      return new Promise((resolve) => {
+        const timer = setTimeout(() => {
+          pendingCommands.delete(id);
+          resolve('ok'); // Fallback after safety timeout
+        }, 12000);
+        pendingCommands.set(id, { resolve, timer });
+      });
+    } else {
+      // Headless mode: simulate realistic physical execution time
+      const durationMs = getEstimatedDurationMs(cmd, args);
+      return new Promise((resolve) => {
+        setTimeout(() => resolve('ok'), durationMs);
+      });
     }
   },
   onClientConnect: (client) => {
@@ -127,6 +193,14 @@ wss.on('connection', (ws) => {
       if (data.type === 'TELEMETRY_UPDATE') {
         // Update UDP state broadcaster with simulated drone physics from Three.js
         udpBridge.updateDroneState(data.state);
+      } else if (data.type === 'COMMAND_RESULT') {
+        // Browser completed physical maneuver
+        const pending = pendingCommands.get(data.id);
+        if (pending) {
+          clearTimeout(pending.timer);
+          pendingCommands.delete(data.id);
+          pending.resolve(data.result || 'ok');
+        }
       } else if (data.type === 'SIMULATOR_COMMAND') {
         // User clicked on-screen button in browser (e.g. Takeoff, Land)
         // Simulate as if it was received via UDP or manual override
@@ -145,6 +219,14 @@ wss.on('connection', (ws) => {
   ws.on('close', () => {
     wsClients.delete(ws);
     console.log(`[WebSocket] Three.js simulator client disconnected. Active: ${wsClients.size}`);
+    // If no browser clients remain, resolve all pending commands so UDP does not hang
+    if (wsClients.size === 0) {
+      for (const [id, pending] of pendingCommands.entries()) {
+        clearTimeout(pending.timer);
+        pending.resolve('ok');
+      }
+      pendingCommands.clear();
+    }
   });
 });
 

@@ -91,7 +91,16 @@ class SimulatorApp {
       },
       onCommand: (msg) => {
         this.hud.addLog('udp', `Cmd: "${msg.command}"`, msg.client ? `${msg.client.address}` : '');
-        this.dronePhysics.executeCommand(msg.cmd, msg.args);
+        const p = this.dronePhysics.executeCommand(msg.cmd, msg.args);
+        if (msg.id) {
+          Promise.resolve(p)
+            .then((res) => {
+              this.wsClient.sendCommandResult(msg.id, res || 'ok');
+            })
+            .catch(() => {
+              this.wsClient.sendCommandResult(msg.id, 'error');
+            });
+        }
       }
     });
 

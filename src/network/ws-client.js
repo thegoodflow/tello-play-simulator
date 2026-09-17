@@ -116,4 +116,14 @@ export class WebSocketClient {
       }));
     }
   }
+
+  sendCommandResult(id, result = 'ok') {
+    if (this.isConnected && this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({
+        type: 'COMMAND_RESULT',
+        id,
+        result
+      }));
+    }
+  }
 }
