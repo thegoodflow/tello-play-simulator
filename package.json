@@ -1,0 +1,35 @@
+{
+  "name": "tello-play-simulator",
+  "version": "1.0.0",
+  "description": "DJI Tello 3D Drone Simulator in Three.js with real UDP Wi-Fi network interface",
+  "type": "module",
+  "scripts": {
+    "dev:client": "vite",
+    "dev:server": "node server/index.js",
+    "dev": "concurrently -n \"SERVER,CLIENT\" -c \"cyan,magenta\" \"node server/index.js\" \"vite\"",
+    "build": "vite build",
+    "preview": "vite preview",
+    "start": "node server/index.js",
+    "test:udp": "node scripts/test-tello-udp.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "three": "^0.165.0",
+    "ws": "^8.17.0"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "vite": "^5.2.11"
+  },
+  "keywords": [
+    "dji",
+    "tello",
+    "drone",
+    "simulator",
+    "threejs",
+    "udp",
+    "drone-simulator"
+  ],
+  "author": "",
+  "license": "MIT"
+}

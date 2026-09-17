@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>DJI Tello 3D Drone Simulator</title>
+  <link rel="stylesheet" href="/src/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+  <!-- 3D WebGL Canvas Container -->
+  <div id="canvas-container"></div>
+
+  <!-- FPV Reticle Overlay (Active in FPV mode) -->
+  <div id="fpv-crosshair" class="fpv-overlay" style="display: none;">
+    <div class="crosshair-circle"></div>
+    <div class="crosshair-h"></div>
+    <div class="crosshair-v"></div>
+    <div class="fpv-tag">720P HD • 30FPS • FPV CAM</div>
+  </div>
+
+  <!-- Main HUD Layer -->
+  <div id="hud-overlay">
+    
+    <!-- Top Navigation & Network Bar -->
+    <header class="top-bar">
+      <div class="brand">
+        <span class="brand-badge">DJI</span>
+        <span class="brand-title">TELLO SIMULATOR</span>
+      </div>
+
+      <div class="top-center-stats">
+        <div class="drone-ip-pill" id="btn-info" title="Click for connection instructions">
+          <span class="pill-dot"></span>
+          <span class="pill-label">DRONE IP:</span>
+          <span class="pill-val" id="drone-ip-display">Detecting...</span>
+        </div>
+
+        <div id="flight-state" class="state-badge state-disarmed">DISARMED</div>
+        <div id="client-status" class="status-pill client-idle">WAITING FOR APP</div>
+        <div id="ws-status" class="status-pill offline">CONNECTING...</div>
+      </div>
+
+      <!-- Camera Mode Selector -->
+      <div class="camera-selector">
+        <button id="cam-chase" class="cam-btn active">Chase</button>
+        <button id="cam-fpv" class="cam-btn">FPV Nose</button>
+        <button id="cam-orbit" class="cam-btn">Orbit</button>
+      </div>
+    </header>
+
+    <!-- Flight Instruments (Left HUD) -->
+    <aside class="instruments-panel">
+      <!-- Battery -->
+      <div class="hud-card">
+        <div class="card-header">
+          <span class="card-title">BATTERY</span>
+          <span class="card-value" id="battery-val">100%</span>
+        </div>
+        <div class="bar-track">
+          <div class="bar-fill" id="battery-bar" style="width: 100%;"></div>
+        </div>
+      </div>
+
+      <!-- Altitude -->
+      <div class="hud-card">
+        <div class="card-header">
+          <span class="card-title">ALTITUDE (H)</span>
+          <span class="card-value highlight" id="height-val">0 cm</span>
+        </div>
+      </div>
+
+      <!-- Speed -->
+      <div class="hud-card">
+        <div class="card-header">
+          <span class="card-title">SPEED</span>
+          <span class="card-value" id="speed-val">0 cm/s</span>
+        </div>
+      </div>
+
+      <!-- Flight Time -->
+      <div class="hud-card">
+        <div class="card-header">
+          <span class="card-title">FLIGHT TIME</span>
+          <span class="card-value" id="flight-time">00:00</span>
+        </div>
+      </div>
+
+      <!-- Attitude Angles -->
+      <div class="hud-card">
+        <div class="attitude-readouts">
+          <div><span class="sub-label">PITCH</span> <span id="pitch-val">0°</span></div>
+          <div><span class="sub-label">ROLL</span> <span id="roll-val">0°</span></div>
+          <div><span class="sub-label">YAW</span> <span id="yaw-val">0°</span></div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Center Artificial Horizon -->
+    <div class="center-hud">
+      <div id="compass-tape" class="compass-tape">0° HDG</div>
+      <div class="horizon-wrapper">
+        <div class="horizon-frame">
+          <div id="horizon-line" class="horizon-line">
+            <div class="pitch-rung ladder-pos"></div>
+            <div class="pitch-rung ladder-neg"></div>
+          </div>
+          <div class="center-aircraft-symbol"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Live UDP Command Log Terminal (Right HUD) -->
+    <aside class="log-panel">
+      <div class="log-header">
+        <span>UDP 8889 COMMAND STREAM</span>
+        <span class="live-blink">REC</span>
+      </div>
+      <div id="command-log" class="log-stream">
+        <div class="log-line log-sys">
+          <span class="log-time">00:00:00</span>
+          <span class="log-dir">[SYS]</span>
+          <span class="log-msg">Simulator initialized. UDP bridge waiting on port 8889...</span>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Bottom Flight Control Bar -->
+    <footer class="bottom-controls">
+      <!-- Left Joystick: Throttle & Yaw -->
+      <div class="joystick-wrapper">
+        <div class="joystick-label">THROTTLE / YAW</div>
+        <div id="stick-left" class="virtual-joystick">
+          <div class="joystick-crosshair-h"></div>
+          <div class="joystick-crosshair-v"></div>
+          <div class="joystick-knob"></div>
+        </div>
+      </div>
+
+      <!-- Action Buttons -->
+      <div class="action-buttons-group">
+        <button id="btn-takeoff" class="action-btn btn-takeoff">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+          TAKEOFF [T]
+        </button>
+        <button id="btn-land" class="action-btn btn-land">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12l7 7 7-7"/></svg>
+          LAND [L]
+        </button>
+        <button id="btn-flip-f" class="action-btn btn-flip">
+          FLIP FRONT
+        </button>
+        <button id="btn-emergency" class="action-btn btn-danger">
+          EMERGENCY [ESC]
+        </button>
+        <button id="btn-reset" class="action-btn btn-secondary">
+          RESET PAD
+        </button>
+      </div>
+
+      <!-- Right Joystick: Pitch & Roll -->
+      <div class="joystick-wrapper">
+        <div class="joystick-label">PITCH / ROLL</div>
+        <div id="stick-right" class="virtual-joystick">
+          <div class="joystick-crosshair-h"></div>
+          <div class="joystick-crosshair-v"></div>
+          <div class="joystick-knob"></div>
+        </div>
+      </div>
+    </footer>
+
+  </div>
+
+  <!-- Network Connection Instructions Modal -->
+  <div id="network-modal" class="modal-backdrop hidden">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h2>📱 CONNECT YOUR MOBILE APP</h2>
+        <button id="btn-close-modal" class="close-btn">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p class="guide-step"><strong>1. Same Wi-Fi Network:</strong> Make sure your mobile phone and this PC are connected to the <strong>same Wi-Fi router / network</strong> (or phone Wi-Fi hotspot).</p>
+        
+        <p class="guide-step"><strong>2. Enter Drone IP in Your App:</strong> In your mobile app's connection or IP setting, enter one of your computer's local Wi-Fi IP addresses below:</p>
+        
+        <div id="ip-list" class="ip-container">
+          <!-- Dynamically populated -->
+        </div>
+
+        <div class="ports-info">
+          <div class="port-item">
+            <span class="p-name">Control Port (UDP):</span>
+            <span class="p-num">8889</span>
+            <span class="p-desc">Sends commands (command, takeoff, rc, etc.)</span>
+          </div>
+          <div class="port-item">
+            <span class="p-name">Telemetry Port (UDP):</span>
+            <span class="p-num">8890</span>
+            <span class="p-desc">Receives real-time drone state (10Hz)</span>
+          </div>
+          <div class="port-item">
+            <span class="p-name">Video Port (UDP):</span>
+            <span class="p-num">11111</span>
+            <span class="p-desc">H.264 video feed when streamon is called</span>
+          </div>
+        </div>
+
+        <p class="guide-note">💡 <em>The simulator accepts all standard Tello SDK text commands, including joystick <code>rc a b c d</code> packets and autonomous flight steps.</em></p>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
