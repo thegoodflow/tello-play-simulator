@@ -24,7 +24,7 @@ export class VideoStreamer {
       const args = [
         '-re',
         '-f', 'lavfi',
-        '-i', 'testsrc=size=960x720:rate=30,drawtext=text=\'DJI TELLO SIMULATOR FPV 720P\':x=(w-text_w)/2:y=30:fontsize=24:fontcolor=white:box=1:boxcolor=black@0.6,drawtext=text=\'%{localtime\\:%H\\\\\\:%M\\\\\\:%S}\':x=(w-text_w)/2:y=650:fontsize=20:fontcolor=green:box=1:boxcolor=black@0.6',
+        '-i', "testsrc=size=960x720:rate=30,drawtext=text='TELLO 3D SIMULATOR FPV 720P':x=(w-text_w)/2:y=40:fontsize=28:fontcolor=white:box=1:boxcolor=black@0.6",
         '-c:v', 'libx264',
         '-pix_fmt', 'yuv420p',
         '-preset', 'ultrafast',
@@ -36,8 +36,13 @@ export class VideoStreamer {
 
       this.ffmpegProcess = spawn('ffmpeg', args, { stdio: ['ignore', 'ignore', 'pipe'] });
 
+      let loggedStarted = false;
       this.ffmpegProcess.stderr.on('data', (data) => {
-        // Suppress verbose ffmpeg logs unless debug needed
+        const str = data.toString();
+        if (!loggedStarted && str.includes('Output #0')) {
+          loggedStarted = true;
+          console.log(`[Video Streamer] H.264 NAL stream active on udp://${this.clientIp}:${this.videoPort}`);
+        }
       });
 
       this.ffmpegProcess.on('error', (err) => {
